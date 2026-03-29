@@ -1,17 +1,21 @@
-checkpoints
-**/__pycache__
-data
-.vscode
-**/backup
-**/log
-**/weights
-visualization
-jobs
+# 模型权重（太大，不推送）
+checkpoints/
+*.h5
+*.weights.h5
 
-# ignore log files
+# 临时文件
+*.zip
+*.bak
+*.lock
+libdevice.10.bc
+__pycache__/
+*.pyc
+
+# 日志
 *.log
+overnight_logs/
 
-models/on_device_ai_comm_v2.py
-preprocess/allnli.py
-srun_gpu.sh
-srun_cpu.sh
+# 备份文件
+models/channels_current.py
+models/channels_modified.py
+models/image_semantic_comm.py.bak

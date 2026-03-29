@@ -103,7 +103,7 @@ class ChannelAWGN(tf.keras.Model):
     
         
     @tf.function
-    def call(self, input):
+    def call(self, input, ebno_db_override=None):
         '''
         Input
         -----
@@ -139,7 +139,9 @@ class ChannelAWGN(tf.keras.Model):
         #####################
         # Sampling a batch of SNRs
         batch_size=b.shape[0]
-        if self.ebno_db_min is not None and self.ebno_db_max is not None:
+        if ebno_db_override is not None:
+            no = ebnodb2no(float(ebno_db_override), self.num_bits_per_symbol, self._coderate)
+        elif self.ebno_db_min is not None and self.ebno_db_max is not None:
             ebno_db_tf = tf.random.uniform(shape=[batch_size], minval=self.ebno_db_min, maxval=self.ebno_db_max)
             no = ebnodb2no(ebno_db_tf, self.num_bits_per_symbol, self._coderate)
         else:
@@ -329,7 +331,7 @@ class ChannelCDL(tf.keras.Model):
         self._remove_nulled_scs = RemoveNulledSubcarriers(self._rg)
 
     @tf.function(jit_compile=True)
-    def call(self, input):
+    def call(self, input, ebno_db_override=None):
         """
         Input
         -----
@@ -356,7 +358,9 @@ class ChannelCDL(tf.keras.Model):
         b = tf.reshape(flatten_input, (-1, 1, self._num_streams_per_tx, self._k))
         batch_size = b.shape[0]
 
-        if self.ebno_db_min is not None and self.ebno_db_max is not None:
+        if ebno_db_override is not None:
+            no = ebnodb2no(float(ebno_db_override), self._num_bits_per_symbol, self._coderate, self._rg)
+        elif self.ebno_db_min is not None and self.ebno_db_max is not None:
             ebno_db_tf = tf.random.uniform(shape=[batch_size], minval=self.ebno_db_min, maxval=self.ebno_db_max)
             no = ebnodb2no(ebno_db_tf, self._num_bits_per_symbol, self._coderate, self._rg)
         else:
@@ -597,7 +601,7 @@ class ChannelSL(tf.keras.Model):
         
 
     @tf.function(jit_compile=True)
-    def call(self, input):
+    def call(self, input, ebno_db_override=None):
         """
         Input
         -----
@@ -737,7 +741,7 @@ class ChannelFlatFading(tf.keras.Model):
     
         
     @tf.function(jit_compile=True)
-    def call(self, input):
+    def call(self, input, ebno_db_override=None):
         '''
         Input
         -----
