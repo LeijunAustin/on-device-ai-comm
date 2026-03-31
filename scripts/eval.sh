@@ -16,7 +16,7 @@ EVAL_NUM_BEAMS="1"
 
 python eval.py \
     -m "${metric}" \
-    -b 8 \
+    -b 1 \
     -e "${eval_ebno_db}" \
     --result-json-path "${output_dir}/flickr_${metric}_${eval_ebno_db}dB_${fec_type}_${channel_num_tx_ant}_${channel_num_rx_ant}_${num_bits_per_symbol}.json" \
     --prediction-json-path "${output_dir}/flickr_prediction_${eval_ebno_db}dB_${fec_type}_${channel_num_tx_ant}_${channel_num_rx_ant}_${num_bits_per_symbol}.json" \
@@ -29,7 +29,7 @@ python eval.py \
     --num-bits-per-symbol "${num_bits_per_symbol}" \
     --bin-conv-method "vector_quantization" \
     --embedding-dim 2 \
-    --num-embeddings 1024 \
+    --num-embeddings 256 \
     --num-beams "${EVAL_NUM_BEAMS}" \
     --testset-path "${testset_path}" \
     $checkpoint_dir

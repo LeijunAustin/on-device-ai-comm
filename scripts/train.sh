@@ -11,10 +11,10 @@ python train.py \
     --train_file "$trainset_path" \
     --validation_file "$devset_path" \
     --test_file "$devset_path" \
-    --preprocessing_num_workers 4 \
-    --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size  4 \
-    --num_train_epochs 3 \
+    --preprocessing_num_workers 2 \
+    --per_device_train_batch_size 1 \
+    --per_device_eval_batch_size  1 \
+    --num_train_epochs 1 \
     --do_train \
     --do_eval \
     --save_total_limit 1 \
@@ -22,8 +22,8 @@ python train.py \
     --num_beams 1 \
     --pad_to_max_length \
     --overwrite_output_dir \
-    --max_source_length 64 \
-    --max_target_length 64 \
+    --max_source_length 32 \
+    --max_target_length 32 \
     --output_dir $output_dir \
     --ebno_db_min 5 \
     --ebno_db_max 15 \
@@ -36,5 +36,5 @@ python train.py \
     --num_bits_per_symbol "4" \
     --bin_conv_method "vector_quantization" \
     --embedding_dim 2 \
-    --num_embeddings 1024 \
+    --num_embeddings 256 \
     --dataset_config 3.0.0

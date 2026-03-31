@@ -6,7 +6,7 @@ import evaluate
 from tqdm import tqdm
 import warnings
 # from h5_utils import rename_weight
-from torch.profiler import profile, record_function, ProfilerActivity
+# from torch.profiler import profile, record_function, ProfilerActivity
 
 def get_test_data(path):
     with open(path) as f:
@@ -97,8 +97,8 @@ def get_predictions(path, ebno_db, test_data_path,
     if not prediction_json_path.exists():
         print('Missing predictions.json')
 
-        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], with_flops=True,record_shapes=True) as prof:
-            with record_function("model_inference"):        
+        if True:
+            if True:
                 res = predict(
                     path=path, 
                     ebno_db=ebno_db, 
