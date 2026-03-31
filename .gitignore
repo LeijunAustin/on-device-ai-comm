@@ -19,3 +19,4 @@ overnight_logs/
 models/channels_current.py
 models/channels_modified.py
 models/image_semantic_comm.py.bak
+data/
