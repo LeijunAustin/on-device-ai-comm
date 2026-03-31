@@ -86,102 +86,139 @@ export DRJIT_LIBLLVM_PATH=/usr/lib/llvm-14/lib/libLLVM-14.so
 
 ## 4. 完整运行指南
 
+### 前置：每次开始工作前必须激活环境
+
+```bash
+conda activate on-device-ai-comm
+cd ~/on-device-ai-comm
+export TF_FORCE_GPU_ALLOW_GROWTH=true
+export TF_XLA_FLAGS="--tf_xla_auto_jit=0"
+export DRJIT_LIBLLVM_PATH=/usr/lib/llvm-14/lib/libLLVM-14.so
+```
+
+---
+
 ### 工作流概览
 
-整个实验有一条清晰的单向数据流，每个脚本的输出都是下一个脚本的输入：
+整个实验是一条单向流水线，必须按顺序执行。每个步骤的输出路径就是下一个步骤的输入路径：
 
 ```
-train_reconstruction.py  →  AWGN 权重（checkpoints/image-jscc/recon_ld{N}_*/）
-         ↓
-train_cdl_finetune.py    →  CDL 权重（checkpoints/image-jscc/recon_cdl_finetune_ld{N}_*/）
-         ↓
-eval_reconstruction.py   →  checkpoints/image-jscc/eval/snr_recon_ld{N}.json
-eval_cdl_snr.py          →  checkpoints/image-jscc/eval/snr_recon_cdl[_ld{N}].json
-eval_jpeg_baseline.py    →  checkpoints/image-jscc/eval/jpeg_baseline.json
-         ↓
-plot_results_final.py    →  checkpoints/image-jscc/eval/final_v5.png
+[Step 1] train_reconstruction.py
+         读取：CIFAR-10（自动下载到 ~/.keras/datasets/）
+         写入：checkpoints/image-jscc/recon_ld{N}_{时间戳}/best_psnr{xx.xx}.weights.h5
+                                    ↓
+[Step 2] train_cdl_finetune.py
+         读取：checkpoints/image-jscc/recon_ld{N}_*/best_psnr*.weights.h5（自动查找）
+         写入：checkpoints/image-jscc/recon_cdl_finetune_ld{N}_{时间戳}/best_psnr{xx.xx}.weights.h5
+                                    ↓
+[Step 3a] eval_reconstruction.py    读取 Step 1 权重 → 写入 eval/snr_recon_ld{N}.json
+[Step 3b] eval_cdl_snr.py          读取 Step 2 权重 → 写入 eval/snr_recon_cdl[_ld{N}].json
+[Step 3c] eval_jpeg_baseline.py    无需权重          → 写入 eval/jpeg_baseline.json
+                                    ↓
+[Step 4]  plot_results_final.py
+          读取：checkpoints/image-jscc/eval/ 下的全部 7 个 JSON 文件
+          写入：checkpoints/image-jscc/eval/final_v5.png
 ```
 
 ---
 
-### Step 1：AWGN 预训练（两阶段训练第一阶段）
+### Step 1：AWGN 预训练
 
-**脚本：** `train_reconstruction.py`
-**作用：** 用可微分的 AWGN 信道从头训练 CNN encoder + decoder，让模型学会基础的图像语义压缩能力。这是整个项目最重要的一步，后续所有实验都依赖这里训练出的权重。
-**调用：** 无外部依赖，只用到 `models/image_semantic_comm.py` 和 `models/channels.py`。
-**输出路径：** `checkpoints/image-jscc/recon_ld{latent_dim}_{timestamp}/best_psnr{xx.xx}.weights.h5`
+**脚本：** `~/on-device-ai-comm/train_reconstruction.py`
+**作用：** 用可微分的 AWGN 信道从头训练 CNN encoder + decoder，让模型学会基础的图像语义压缩能力。这是整个项目最重要的一步，后续所有实验都依赖这里训练出的权重。CDL 信道不可微分，所以必须先做这一步，才能进行 Step 2 的 CDL 微调。
+**调用关系：** `train_reconstruction.py` 内部 import 了 `models/image_semantic_comm.py`（模型结构）和 `models/channels.py`（信道定义），不依赖任何其他脚本。
 
 ```bash
-# 训练 ld=128（压缩比 24:1，速度最快）
+# ── 正式训练：三种 latent dim 各跑一次，约 2-4 小时/次 ─────────────
+
 python train_reconstruction.py --latent-dim 128 --epochs 100
+# 输出：checkpoints/image-jscc/recon_ld128_{时间戳}/best_psnr21.79.weights.h5
+#       checkpoints/image-jscc/recon_ld128_{时间戳}/history.json
 
-# 训练 ld=256
 python train_reconstruction.py --latent-dim 256 --epochs 100
+# 输出：checkpoints/image-jscc/recon_ld256_{时间戳}/best_psnr22.66.weights.h5
+#       checkpoints/image-jscc/recon_ld256_{时间戳}/history.json
 
-# 训练 ld=512（压缩比 6:1，性能最好）
 python train_reconstruction.py --latent-dim 512 --epochs 100
+# 输出：checkpoints/image-jscc/recon_ld512_{时间戳}/best_psnr23.92.weights.h5
+#       checkpoints/image-jscc/recon_ld512_{时间戳}/history.json
 
-# 可选参数（有默认值，不指定也能跑）：
-#   --batch-size 64       每批图片数
-#   --lr 5e-4             学习率
-#   --ebno-db-min 0       训练时 SNR 下限（dB）
-#   --ebno-db-max 20      训练时 SNR 上限（dB）
-#   --output-dir checkpoints/image-jscc
-```
+# ── 可选参数（均有默认值，不填也能跑）────────────────────────────────
+#   --batch-size 64        每批图片数（默认 64）
+#   --lr 5e-4              学习率（默认 5e-4）
+#   --ebno-db-min 0        训练时 SNR 随机采样下限，单位 dB（默认 0）
+#   --ebno-db-max 20       训练时 SNR 随机采样上限，单位 dB（默认 20）
+#   --output-dir checkpoints/image-jscc   权重保存的父目录
 
-**冒烟测试（快速验证代码能跑通）：**
-
-```bash
+# ── 冒烟测试：1 epoch 验证流程无报错，约 1-2 分钟 ────────────────────
 python train_reconstruction.py --latent-dim 128 --epochs 1
-# 约 1-2 分钟，看到 "Best PSNR: xx.xx dB" 输出即为成功
+# 期望输出末尾：Best PSNR: xx.xx dB → checkpoints/image-jscc/recon_ld128_.../
 ```
 
 ---
 
-### Step 2：CDL 微调（两阶段训练第二阶段）
+### Step 2：CDL 微调
 
-**脚本：** `train_cdl_finetune.py`
-**作用：** 在 CDL-A 真实衰落信道下对 Step 1 训练出的模型进行微调。CDL 信道含有 LDPC 硬判决，不可微分，所以必须先用 AWGN 预训练，再用 CDL 微调，不能从头开始训练 CDL 模型。
-**调用：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`、`load_cifar10`、`reconstruction_loss`、`psnr`、`ssim_metric`。会自动 glob 查找 Step 1 生成的最佳 AWGN 权重，不需要手动填写路径。
-**输出路径：** `checkpoints/image-jscc/recon_cdl_finetune_ld{latent_dim}_{timestamp}/best_psnr{xx.xx}.weights.h5`
+**脚本：** `~/on-device-ai-comm/train_cdl_finetune.py`
+**作用：** 在 CDL-A 真实衰落信道（含 LDPC 编解码）下对 Step 1 的模型进行微调。CDL 信道含有 LDPC 硬判决，不可微分，所以不能从头训练，只能从 AWGN 预训练权重出发微调。跳过 Step 1 直接跑 Step 2 会导致 encoder 收不到梯度，性能极差（实测 13.45 dB vs 两阶段的 17+ dB）。
+**调用关系：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`、`load_cifar10`、`reconstruction_loss`、`psnr`、`ssim_metric`。权重路径通过 `glob` 自动查找 `checkpoints/image-jscc/recon_ld{N}_*/best_psnr*.weights.h5`，取 PSNR 数值最高的文件，不需要手动填写路径。
 
 ```bash
+# ── 正式微调：三种 latent dim 各跑一次，约 30-60 分钟/次 ─────────────
+
 python train_cdl_finetune.py --latent-dim 128
+# 自动读取：checkpoints/image-jscc/recon_ld128_*/best_psnr*.weights.h5（最高 PSNR）
+# 输出：    checkpoints/image-jscc/recon_cdl_finetune_ld128_{时间戳}/best_psnr17.09.weights.h5
+#           checkpoints/image-jscc/recon_cdl_finetune_ld128_{时间戳}/history.json
+
 python train_cdl_finetune.py --latent-dim 256
+# 自动读取：checkpoints/image-jscc/recon_ld256_*/best_psnr*.weights.h5
+# 输出：    checkpoints/image-jscc/recon_cdl_finetune_ld256_{时间戳}/best_psnr18.59.weights.h5
+
 python train_cdl_finetune.py --latent-dim 512
+# 自动读取：checkpoints/image-jscc/recon_ld512_*/best_psnr*.weights.h5
+# 输出：    checkpoints/image-jscc/recon_cdl_finetune_ld512_{时间戳}/best_psnr20.20.weights.h5
 
-# 可选参数：
-#   --epochs 20    微调轮数（默认 20）
-#   --lr 1e-4      学习率（默认比 AWGN 预训练小 5 倍）
-```
+# ── 可选参数 ─────────────────────────────────────────────────────────
+#   --epochs 20    微调轮数（默认 20，CDL 收敛快，20 轮通常已足够）
+#   --lr 1e-4      学习率（默认 1e-4，比 AWGN 预训练的 5e-4 小，避免破坏特征）
 
-**冒烟测试：**
-
-```bash
+# ── 冒烟测试：约 2-3 分钟 ────────────────────────────────────────────
 python train_cdl_finetune.py --latent-dim 512 --epochs 1
-# 约 2-3 分钟，看到 "Done. Best CDL PSNR (ld=512): xx.xx dB" 即为成功
+# 期望输出末尾：Done. Best CDL PSNR (ld=512): xx.xx dB → checkpoints/.../
 ```
 
 ---
 
 ### Step 3a：AWGN 信道评估
 
-**脚本：** `eval_reconstruction.py`
-**作用：** 对 AWGN 预训练权重在 SNR = [-5, 0, 5, ..., 25] dB 的范围内做 sweep，记录每个 SNR 点的 PSNR 和 SSIM。同时评估无信道上界（bypass 模式）。
-**调用：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`。权重路径需要手动指定。
-**输出路径：** `checkpoints/image-jscc/eval/snr_recon_ld{latent_dim}.json`
+**脚本：** `~/on-device-ai-comm/eval_reconstruction.py`
+**作用：** 在 SNR = [-5, 0, 5, 10, 15, 20, 25] dB 共 7 个点上逐一评估 PSNR 和 SSIM，同时评估无信道上界（bypass 模式，理论性能天花板）。结果保存为 JSON 供 Step 4 绘图使用。
+**调用关系：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`。`--weights` 路径需要手动指定，填入 Step 1 生成的实际文件名。
 
 ```bash
+# ── ld=128 ────────────────────────────────────────────────────────────
 python eval_reconstruction.py \
     --weights checkpoints/image-jscc/recon_ld128_2026-03-25_02-19-35/best_psnr21.79.weights.h5 \
     --latent-dim 128
+# 输出：checkpoints/image-jscc/eval/snr_recon_ld128.json
 
+# ── ld=256 ────────────────────────────────────────────────────────────
+python eval_reconstruction.py \
+    --weights checkpoints/image-jscc/recon_ld256_2026-03-25_01-02-27/best_psnr22.66.weights.h5 \
+    --latent-dim 256
+# 输出：checkpoints/image-jscc/eval/snr_recon_ld256.json
+
+# ── ld=512 ────────────────────────────────────────────────────────────
 python eval_reconstruction.py \
     --weights checkpoints/image-jscc/recon_ld512_2026-03-25_03-50-35/best_psnr23.92.weights.h5 \
     --latent-dim 512
+# 输出：checkpoints/image-jscc/eval/snr_recon_ld512.json
 
-# 可选参数：
-#   --snr-min -5  --snr-max 25  --snr-step 5
+# ── 可选参数 ─────────────────────────────────────────────────────────
+#   --snr-min -5            SNR 起点，单位 dB（默认 -5）
+#   --snr-max 25            SNR 终点，单位 dB（默认 25）
+#   --snr-step 5            SNR 步长，单位 dB（默认 5）
 #   --batch-size 64
 #   --output-dir checkpoints/image-jscc/eval
 ```
@@ -190,45 +227,61 @@ python eval_reconstruction.py \
 
 ### Step 3b：CDL 信道评估
 
-**脚本：** `eval_cdl_snr.py`
-**作用：** 对 CDL 微调权重做 SNR sweep，评估在真实衰落信道下的 PSNR/SSIM。会自动 glob 查找对应 latent_dim 的最佳 AWGN 权重和 CDL 权重，不需要手动指定路径。
-**调用：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`、`psnr`、`ssim_metric`。
-**输出路径：**
-- ld=128 → `checkpoints/image-jscc/eval/snr_recon_cdl.json`（历史兼容命名）
-- ld=256 → `checkpoints/image-jscc/eval/snr_recon_cdl_ld256.json`
-- ld=512 → `checkpoints/image-jscc/eval/snr_recon_cdl_ld512.json`
+**脚本：** `~/on-device-ai-comm/eval_cdl_snr.py`
+**作用：** 在相同的 7 个 SNR 点上评估 CDL 微调权重的 PSNR 和 SSIM，用于和 Step 3a 的 AWGN 结果对比，量化真实衰落信道带来的性能损失（约 3-4 dB）。
+**调用关系：** import 了 `train_reconstruction.py` 中的 `ReconstructionModel`、`psnr`、`ssim_metric`。通过 `glob` 自动查找 AWGN 权重（`recon_ld{N}_*/best_psnr*.weights.h5`）和 CDL 权重（`recon_cdl_finetune_ld{N}_*/best_psnr*.weights.h5`），均取 PSNR 数值最高的文件，不需要手动填路径。
 
 ```bash
 python eval_cdl_snr.py --latent-dim 128
+# 自动读取：checkpoints/image-jscc/recon_ld128_*/best_psnr*.weights.h5
+#           checkpoints/image-jscc/recon_cdl_finetune_ld128_*/best_psnr*.weights.h5
+# 输出：    checkpoints/image-jscc/eval/snr_recon_cdl.json  ← ld=128 用此历史命名
+
 python eval_cdl_snr.py --latent-dim 256
+# 输出：checkpoints/image-jscc/eval/snr_recon_cdl_ld256.json
+
 python eval_cdl_snr.py --latent-dim 512
+# 输出：checkpoints/image-jscc/eval/snr_recon_cdl_ld512.json
 ```
 
 ---
 
 ### Step 3c：JPEG+LDPC 基准评估
 
-**脚本：** `eval_jpeg_baseline.py`
-**作用：** 模拟传统图像传输流水线（JPEG 压缩 → LDPC 编码 → AWGN 信道 → LDPC 解码 → JPEG 解压），展示传统方法的悬崖效应。不依赖 `train_reconstruction.py`，用到了 Sionna 0.x 的 `sionna.channel`、`sionna.fec`、`sionna.mapping`。
-**输出路径：** `checkpoints/image-jscc/eval/jpeg_baseline.json`
+**脚本：** `~/on-device-ai-comm/eval_jpeg_baseline.py`
+**作用：** 模拟传统图像传输流水线（JPEG 压缩 → LDPC 编码 → AWGN 信道 → LDPC 解码 → JPEG 解压），在相同 SNR 条件下评估 PSNR，展示传统方法的"悬崖效应"：SNR < 10 dB 时几乎完全失败（PSNR = 0），SNR ≥ 10 dB 时突然跳到高质量（PSNR ≈ 30 dB）。
+**调用关系：** 不依赖 `train_reconstruction.py`。用到了 Sionna 0.x 的 `sionna.channel.AWGN`、`sionna.fec.ldpc`、`sionna.mapping`（本地 Sionna 0.11.0 支持，无需 Colab）。
 
 ```bash
 python eval_jpeg_baseline.py
-# 约 10-20 分钟
+# 无需任何参数，内部固定使用 CIFAR-10 测试集前 500 张，JPEG quality=75，LDPC k=512 n=1024
+# 输出：checkpoints/image-jscc/eval/jpeg_baseline.json
+# 耗时：约 10-20 分钟
 ```
 
 ---
 
 ### Step 4：生成论文对比图
 
-**脚本：** `plot_results_final.py`
-**作用：** 读取 Step 3 生成的所有 JSON 文件，生成六条语义曲线 + JPEG+LDPC 基线的对比图，分为 PSNR 和 SSIM 两个子图。不依赖任何模型代码，只读 JSON 文件。
-**调用：** 读取 `checkpoints/image-jscc/eval/` 下的 7 个 JSON 文件。
-**输出路径：** `checkpoints/image-jscc/eval/final_v5.png`
+**脚本：** `~/on-device-ai-comm/plot_results_final.py`
+**作用：** 读取 Step 3 生成的全部 7 个 JSON 文件，绘制六条语义通信曲线（ld=128/256/512 × AWGN/CDL）和一条 JPEG+LDPC 基线，输出 PSNR 和 SSIM 两个子图的论文图。
+**调用关系：** 不依赖任何模型代码，只读以下 7 个 JSON 文件：
+
+```
+checkpoints/image-jscc/eval/snr_recon_ld128.json
+checkpoints/image-jscc/eval/snr_recon_ld256.json
+checkpoints/image-jscc/eval/snr_recon_ld512.json
+checkpoints/image-jscc/eval/snr_recon_cdl.json
+checkpoints/image-jscc/eval/snr_recon_cdl_ld256.json
+checkpoints/image-jscc/eval/snr_recon_cdl_ld512.json
+checkpoints/image-jscc/eval/jpeg_baseline.json
+```
 
 ```bash
 python plot_results_final.py
-# 几秒即完成
+# 无需任何参数，路径均硬编码在脚本内
+# 输出：checkpoints/image-jscc/eval/final_v5.png
+# 耗时：几秒# 几秒即完成
 ```
 
 ---
