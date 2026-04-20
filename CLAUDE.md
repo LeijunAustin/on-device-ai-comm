@@ -153,6 +153,15 @@ python train_reconstruction.py --latent-dim 512 --epochs 100
 #   --ebno-db-min 0        训练时 SNR 随机采样下限，单位 dB（默认 0）
 #   --ebno-db-max 20       训练时 SNR 随机采样上限，单位 dB（默认 20）
 #   --output-dir checkpoints/image-jscc   权重保存的父目录
+#   --perceptual-weight 0.1   VGG 感知损失权重（0=关闭，0.1=微调推荐值）
+#   --finetune-from <path>    从已有权重继续微调（感知损失微调专用）
+
+# ── 感知损失微调（从 AWGN 权重继续，约 1-2 小时）────────────────────
+python train_reconstruction.py \
+    --latent-dim 512 --epochs 30 --lr 5e-5 \
+    --perceptual-weight 0.1 \
+    --finetune-from checkpoints/image-jscc/recon_ld512_2026-03-25_03-50-35/best_psnr23.92.weights.h5
+# 输出：checkpoints/image-jscc/recon_ld512_perceptual_{时间戳}/best_psnr*.weights.h5
 
 # ── 冒烟测试：1 epoch 验证流程无报错，约 1-2 分钟 ────────────────────
 python train_reconstruction.py --latent-dim 128 --epochs 1
@@ -358,10 +367,23 @@ snr_recon_ld512.json          AWGN ld=512
 snr_recon_cdl.json            CDL  ld=128（历史兼容命名）
 snr_recon_cdl_ld256.json      CDL  ld=256
 snr_recon_cdl_ld512.json      CDL  ld=512
-jpeg_baseline.json            JPEG+LDPC baseline
+jpeg_baseline.json            JPEG+LDPC baseline（avg CBR=1.24）
+jpeg_fixed_cbr.json           JPEG+LDPC fixed CBR=0.167（与 DeepJSCC ld=512 等带宽）
+kodak_ld512.json              DeepJSCC ld=512 在 Kodak 数据集上评估（9216 个 32×32 patches）
 ```
 
-**最终对比图：** `checkpoints/image-jscc/eval/final_v5.png`
+**Kodak 数据集结果（ld=512，与 CIFAR-10 对比）：**
+```
+SNR(dB)   Kodak    CIFAR-10   提升
+  -5      17.25     14.48     +2.76
+   0      21.89     18.55     +3.34
+   5      25.06     21.61     +3.45
+  10      26.47     23.13     +3.33
+  15      26.99     23.73     +3.26
+  20      27.17     23.93     +3.24
+```
+
+**最终对比图：** `checkpoints/image-jscc/eval/final_v6.png`（含 Kodak 曲线、SNR 轴对齐、CBR 标注）
 
 **重建图像可视化：** `checkpoints/image-jscc/eval/reconstruction_visual.png`
 
@@ -370,6 +392,8 @@ jpeg_baseline.json            JPEG+LDPC baseline
 - `checkpoints/image-jscc/eval/site_specific_heatmap_munich.png`
 - `checkpoints/image-jscc/eval/site_specific_results_sydney.png`
 - `checkpoints/image-jscc/eval/site_specific_heatmap_sydney.png`
+- `checkpoints/image-jscc/eval/site_specific_results_usyd.png`
+- `checkpoints/image-jscc/eval/site_specific_heatmap_usyd.png`
 
 ### 5.3 Sionna RT Site-Specific 实验（✅ 2026年3月31日完成）
 
@@ -410,13 +434,17 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 2. 图像语义重建系统：AWGN + CDL 下稳定训练和评估
 3. 消融实验：latent dimension（128/256/512）× 信道（AWGN/CDL）
 4. 传统 baseline：JPEG+LDPC，悬崖效应验证
-5. 对比图表：六条曲线，核心实验图
-6. Sionna RT site-specific 实验：Munich 场景，433 个 UE 位置，近远距 PSNR 差 4.8 dB
+5. 对比图表：六条曲线，核心实验图（final_v6.png，含 SNR 轴对齐+CBR 标注）
+6. Sionna RT site-specific 实验：Munich/Sydney/USyd 三场景，各 ~2000 UE 位置
 7. JPEG+LDPC vs DeepJSCC 公平对比分析（docs/comparison_fairness.md）
+8. Kodak 数据集评估：ld=512，PSNR 比 CIFAR-10 高约 +3.3 dB
 
-🔜 可选（提升学术价值）
-8. Kodak 数据集实验
-9. ViT/Transformer encoder 对比
+🔜 进行中
+9. VGG 感知损失微调（ld=512，30 epochs，进行中）
+10. 固定 CBR=0.167 的 JPEG+LDPC 对比（进行中）
+
+⬜ 可选（提升学术价值）
+11. ViT/Transformer encoder 对比
 ```
 
 ---

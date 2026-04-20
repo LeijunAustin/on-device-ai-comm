@@ -168,14 +168,41 @@ class ReconstructionModel(tf.keras.Model):
         return x_hat
 
 
+# ─── 感知损失（VGG16 特征层） ──────────────────────────────
+_perceptual_model = None
+
+def get_perceptual_model():
+    global _perceptual_model
+    if _perceptual_model is None:
+        vgg = tf.keras.applications.VGG16(
+            include_top=False, weights='imagenet', input_shape=(32, 32, 3))
+        vgg.trainable = False
+        # block2_conv2：对 32×32 输入仍有 8×8 的空间分辨率，信息量合适
+        out = vgg.get_layer('block2_conv2').output
+        _perceptual_model = tf.keras.Model(vgg.input, out, name='perceptual_vgg')
+        _perceptual_model.trainable = False
+    return _perceptual_model
+
+def perceptual_loss_fn(y_true, y_pred):
+    prep = tf.keras.applications.vgg16.preprocess_input
+    feat_t = get_perceptual_model()(prep(y_true * 255.0), training=False)
+    feat_p = get_perceptual_model()(prep(y_pred * 255.0), training=False)
+    # 归一化后计算 L2 距离，避免量级差异
+    norm = tf.cast(tf.size(feat_t), tf.float32)
+    return tf.reduce_sum(tf.square(feat_t - feat_p)) / norm
+
+
 # ─── 损失函数 ───────────────────────────────────────────
 def ssim_loss(y_true, y_pred):
     return 1.0 - tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))
 
-def reconstruction_loss(y_true, y_pred, alpha=0.8):
-    mse = tf.reduce_mean(tf.square(y_true - y_pred))
+def reconstruction_loss(y_true, y_pred, alpha=0.8, perceptual_weight=0.0):
+    mse  = tf.reduce_mean(tf.square(y_true - y_pred))
     ssim = ssim_loss(y_true, y_pred)
-    return alpha * mse + (1 - alpha) * ssim
+    loss = alpha * mse + (1 - alpha) * ssim
+    if perceptual_weight > 0:
+        loss = loss + perceptual_weight * perceptual_loss_fn(y_true, y_pred)
+    return loss
 
 def psnr(y_true, y_pred):
     return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0))
@@ -187,7 +214,8 @@ def ssim_metric(y_true, y_pred):
 # ─── 训练 ───────────────────────────────────────────────
 def train(args):
     ts = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    out = os.path.join(args.output_dir, f'recon_ld{args.latent_dim}_{ts}')
+    suffix = '_perceptual' if args.perceptual_weight > 0 else ''
+    out = os.path.join(args.output_dir, f'recon_ld{args.latent_dim}{suffix}_{ts}')
     os.makedirs(out, exist_ok=True)
     print(f"Output: {out}")
 
@@ -207,6 +235,15 @@ def train(args):
         num_bits_per_symbol=args.bits_per_sym,
     )
 
+    # 感知损失微调模式：从已有权重继续训练
+    if args.finetune_from:
+        dummy = tf.zeros((2, 32, 32, 3))
+        model(dummy, training=False)
+        model.load_weights(args.finetune_from)
+        print(f"Loaded weights for fine-tuning: {args.finetune_from}")
+        if args.perceptual_weight > 0:
+            _ = get_perceptual_model()  # 预加载 VGG 权重
+
     opt = tf.keras.optimizers.Adam(args.lr)
     best_psnr = 0.0
     history = []
@@ -218,7 +255,8 @@ def train(args):
         for imgs in train_ds:
             with tf.GradientTape() as tape:
                 x_hat = model(imgs, training=True)
-                loss = reconstruction_loss(imgs, x_hat)
+                loss = reconstruction_loss(imgs, x_hat,
+                                           perceptual_weight=args.perceptual_weight)
             grads = tape.gradient(loss, model.trainable_variables)
             opt.apply_gradients(zip(grads, model.trainable_variables))
             tr_loss.update_state(loss)
@@ -274,7 +312,11 @@ def parse_args():
     p.add_argument('--fec-num-iter',  type=int, default=6)
     p.add_argument('--tx-ant',        type=int, default=2)
     p.add_argument('--rx-ant',        type=int, default=2)
-    p.add_argument('--bits-per-sym',  type=int, default=4)
+    p.add_argument('--bits-per-sym',      type=int,   default=4)
+    p.add_argument('--perceptual-weight', type=float, default=0.0,
+                   help='VGG perceptual loss weight (0=disabled, 0.1 recommended for finetune)')
+    p.add_argument('--finetune-from',     default=None,
+                   help='Load existing weights and fine-tune (path to .weights.h5)')
     return p.parse_args()
 
 
