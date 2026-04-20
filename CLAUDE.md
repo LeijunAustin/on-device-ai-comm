@@ -412,10 +412,11 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 4. 传统 baseline：JPEG+LDPC，悬崖效应验证
 5. 对比图表：六条曲线，核心实验图
 6. Sionna RT site-specific 实验：Munich 场景，433 个 UE 位置，近远距 PSNR 差 4.8 dB
+7. JPEG+LDPC vs DeepJSCC 公平对比分析（docs/comparison_fairness.md）
 
 🔜 可选（提升学术价值）
-7. Kodak 数据集实验
-8. ViT/Transformer encoder 对比
+8. Kodak 数据集实验
+9. ViT/Transformer encoder 对比
 ```
 
 ---
