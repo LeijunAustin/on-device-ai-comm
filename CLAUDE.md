@@ -1,5 +1,5 @@
 # Image Semantic Communication Project — 项目状态文档
-> 最后更新：2026年3月31日
+> 最后更新：2026年4月21日
 > 用途：在新对话中恢复项目上下文，让 Claude 能继续帮助推进项目
 
 ---
@@ -79,8 +79,12 @@ export DRJIT_LIBLLVM_PATH=/usr/lib/llvm-14/lib/libLLVM-14.so
 - `run_overnight.sh`：批量运行所有实验的脚本（参考用）
 - `CLAUDE.md`：本文档
 
-**Colab RT 实验文件：**
-- `colab_rt_v3.py`：Sionna RT site-specific 实验脚本（在 Google Colab 上运行，见第 7 节）
+**本地 RT 实验文件（2026-04-21 迁移完成）：**
+- `run_rt_local.py`：Sionna RT site-specific 实验脚本，在本地 `sionna-new` 环境运行
+- `RT.ipynb`：Colab 版本（备用），末尾 Cell 11 可将结果保存到 Drive
+
+**可视化脚本：**
+- `visualize_reconstruction.py`：展示不同 SNR 下的重建图像对比网格
 
 ---
 
@@ -359,6 +363,14 @@ jpeg_baseline.json            JPEG+LDPC baseline
 
 **最终对比图：** `checkpoints/image-jscc/eval/final_v5.png`
 
+**重建图像可视化：** `checkpoints/image-jscc/eval/reconstruction_visual.png`
+
+**RT 结果图（2000 采样点）：**
+- `checkpoints/image-jscc/eval/site_specific_results_munich.png`
+- `checkpoints/image-jscc/eval/site_specific_heatmap_munich.png`
+- `checkpoints/image-jscc/eval/site_specific_results_sydney.png`
+- `checkpoints/image-jscc/eval/site_specific_heatmap_sydney.png`
+
 ### 5.3 Sionna RT Site-Specific 实验（✅ 2026年3月31日完成）
 
 ```
@@ -367,10 +379,17 @@ jpeg_baseline.json            JPEG+LDPC baseline
 SNR 范围：   -10.0 ~ 24.9 dB
 PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 
-近距离 (<100m)，n=125：   平均 PSNR = 20.4 dB
-中距离 (100-250m)，n=244：平均 PSNR = 19.1 dB
-远距离 (>250m)，n=64：    平均 PSNR = 15.5 dB
-★ 近距 vs 远距 PSNR 差 = 4.8 dB
+**Munich（2026-04-21 更新，2000 采样目标，1744 有效位置）：**
+近距离 (<100m)，n=503：   平均 PSNR = 20.7 dB
+中距离 (100-250m)，n=1006：平均 PSNR = 18.9 dB
+远距离 (>250m)，n=235：    平均 PSNR = 16.7 dB
+★ 近距 vs 远距 PSNR 差 = 4.0 dB
+
+**Sydney（2026-04-21 新增，2000 采样目标，1982 有效位置）：**
+近距离 (<100m)，n=118：   平均 PSNR = 20.4 dB
+中距离 (100-250m)，n=1489：平均 PSNR = 14.6 dB
+远距离 (>250m)，n=375：    平均 PSNR = 11.9 dB
+★ 近距 vs 远距 PSNR 差 = 8.5 dB
 ```
 
 ---
@@ -394,6 +413,31 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 ---
 
 ## 7. Sionna RT 实验（Google Colab）
+
+### 本地运行（推荐，2026-04-21 迁移完成）
+
+RT 实验现在可以在本地 `sionna-new` 环境运行，不再依赖 Colab：
+
+```bash
+# 内置场景（无需额外文件）
+conda run -n sionna-new python run_rt_local.py --scene munich
+conda run -n sionna-new python run_rt_local.py --scene etoile
+
+# 自定义场景（首次需要 zip，之后自动使用缓存）
+conda run -n sionna-new python run_rt_local.py --scene sydney \
+    --sydney-zip /mnt/e/OneDrive/Desktop/sydney_scene.zip
+
+# 强制重新计算（忽略缓存）
+conda run -n sionna-new python run_rt_local.py --scene munich --force-recompute
+```
+
+CIR 缓存路径：`checkpoints/image-jscc/rt_cache/{scene}_{a,tau,ue_pos}.npy`
+
+**两个环境说明：**
+- `on-device-ai-comm`（Python 3.9, TF 2.10, Sionna 0.11）：训练和评估
+- `sionna-new`（Python 3.10, TF 2.21, Sionna 1.2.2）：RT 实验专用
+
+两个环境通过文件交换数据（权重 .h5 → sionna-new 读取；JSON → on-device-ai-comm 绘图），互不干扰。
 
 ### Colab 快速重连指南
 

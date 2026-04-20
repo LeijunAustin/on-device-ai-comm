@@ -1,4 +1,6 @@
 import json
+import glob
+import os
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
@@ -50,6 +52,17 @@ for data, key, label in datasets:
     lw = 2.5 if key == 'jpeg' else 2
     ax1.plot(snr, psnr, color=c, marker=m, ls=ls, lw=lw, ms=7, label=label)
     ax2.plot(snr, ssim, color=c, marker=m, ls=ls, lw=lw, ms=7, label=label)
+
+# RT site-specific 散点（可选，文件存在时自动叠加）
+rt_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd']
+rt_files = sorted(glob.glob('checkpoints/image-jscc/eval/site_specific_results_*.json'))
+for i, rt_path in enumerate(rt_files):
+    scene_name = os.path.basename(rt_path).replace('site_specific_results_', '').replace('.json', '')
+    rt_data = load(rt_path)
+    rt_snr  = [d['snr_db']  for d in rt_data]
+    rt_psnr = [d['psnr_db'] for d in rt_data]
+    ax1.scatter(rt_snr, rt_psnr, color=rt_colors[i % len(rt_colors)],
+                s=12, alpha=0.35, zorder=2, label=f'RT site-specific ({scene_name})')
 
 ax1.axhline(y=23.99, color='gray', ls=':', lw=1.5, label='No channel upper bound (ld=512)')
 ax1.set_xlabel('SNR (Eb/N0, dB)', fontsize=12)
