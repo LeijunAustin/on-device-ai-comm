@@ -385,11 +385,19 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 远距离 (>250m)，n=235：    平均 PSNR = 16.7 dB
 ★ 近距 vs 远距 PSNR 差 = 4.0 dB
 
-**Sydney（2026-04-21 新增，2000 采样目标，1982 有效位置）：**
+**Sydney CBD（2026-04-21 新增，2000 采样目标，1982 有效位置）：**
 近距离 (<100m)，n=118：   平均 PSNR = 20.4 dB
 中距离 (100-250m)，n=1489：平均 PSNR = 14.6 dB
 远距离 (>250m)，n=375：    平均 PSNR = 11.9 dB
 ★ 近距 vs 远距 PSNR 差 = 8.5 dB
+
+**University of Sydney（2026-04-21 新增，2000 采样目标，1998 有效位置）：**
+场景范围：819m × 682m，建筑最高 37.5m，基站位于 [16.0, 36.4, 30.0]
+近距离 (<100m)，n=233：   平均 PSNR = 18.0 dB
+中距离 (100-250m)，n=938：平均 PSNR = 11.7 dB
+远距离 (>250m)，n=827：   平均 PSNR = 10.8 dB
+★ 近距 vs 远距 PSNR 差 = 7.2 dB
+场景文件：`/mnt/e/OneDrive/Desktop/usyd_scene/usyd_campus.xml`（由 convert_to_mitsuba.py 生成）
 ```
 
 ---

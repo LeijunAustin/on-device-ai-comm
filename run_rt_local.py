@@ -115,6 +115,18 @@ SCENE_CONFIGS = {
         "max_dist":    350,
         "description": "Sydney CBD, Australia (QVB area, custom OSM scene)",
     },
+    "usyd": {
+        "source":      "custom",
+        "scene_ref":   "/tmp/usyd_scene/usyd_campus.xml",
+        "extract_dir": "/tmp/usyd_scene",
+        "bs_position": [16.0, 36.4, 30.0],
+        "bs_look_at":  [16.0, 36.4, 1.5],
+        "cam_position":[16, 36, 800],
+        "cam_orient":  np.array([0., np.pi/2., 0.]),
+        "min_dist":    10,
+        "max_dist":    450,
+        "description": "University of Sydney, Camperdown Campus (custom OSM scene)",
+    },
 }
 
 # 5G NR 系统参数
@@ -512,7 +524,7 @@ PSNR：  {psnr_arr.min():.2f} ~ {psnr_arr.max():.2f} dB（均值 {psnr_arr.mean(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--scene', default='munich',
-                        choices=['munich', 'etoile', 'sydney'],
+                        choices=['munich', 'etoile', 'sydney', 'usyd'],
                         help='场景选择（默认 munich）')
     parser.add_argument('--sydney-zip', default=None,
                         help='Sydney 场景 zip 文件路径（仅 --scene sydney 时需要）')
