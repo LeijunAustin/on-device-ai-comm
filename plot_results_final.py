@@ -28,6 +28,9 @@ jpeg_fcbr = load(jpeg_fixed_cbr_path) if os.path.exists(jpeg_fixed_cbr_path) els
 kodak_path = 'checkpoints/image-jscc/eval/kodak_ld512.json'
 kodak_ld512 = load(kodak_path) if os.path.exists(kodak_path) else None
 
+perceptual_path = 'checkpoints/image-jscc/eval/snr_recon_ld512_perceptual.json'
+perceptual_ld512 = load(perceptual_path) if os.path.exists(perceptual_path) else None
+
 def extract(data, key, snr_offset=0.0):
     snr  = [d['ebno_db'] + snr_offset for d in data]
     vals = [d[key] if d.get('success_rate', 1) > 0.5 else 0 for d in data]
@@ -48,7 +51,8 @@ colors = {
     'ld512_cdl':     ('m', 'P', '--'),
     'jpeg':          ('r', 's', '-'),
     'jpeg_fcbr':     ('orange', 'x', '-.'),
-    'kodak_ld512':   ('darkviolet', 'h', '-'),
+    'kodak_ld512':        ('darkviolet', 'h', '-'),
+    'perceptual_ld512':   ('m', 's', ':'),
 }
 
 datasets = [
@@ -66,6 +70,9 @@ if jpeg_fcbr is not None:
 if kodak_ld512 is not None:
     datasets.append((kodak_ld512, 'kodak_ld512',
                      f'DeepJSCC ld=512, CBR={CBR[512]:.3f} (Kodak, 32×32 patches)', 0.0))
+if perceptual_ld512 is not None:
+    datasets.append((perceptual_ld512, 'perceptual_ld512',
+                     f'DeepJSCC ld=512, CBR={CBR[512]:.3f} +VGG perceptual loss (AWGN)', 0.0))
 
 for data, key, label, offset in datasets:
     snr, psnr = extract(data, 'psnr', offset)

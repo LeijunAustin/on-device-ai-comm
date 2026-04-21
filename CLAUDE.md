@@ -439,9 +439,14 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
 7. JPEG+LDPC vs DeepJSCC 公平对比分析（docs/comparison_fairness.md）
 8. Kodak 数据集评估：ld=512，PSNR 比 CIFAR-10 高约 +3.3 dB
 
+✅ 已完成（续）
+9. VGG 感知损失微调（ld=512，30 epochs）：
+   最佳 PSNR=24.12 dB（原 23.92 dB，+0.20 dB），SSIM 0.886→0.877（轻微下降，正常代价）
+   SNR sweep 结果：snr_recon_ld512_perceptual.json
+   权重：checkpoints/image-jscc/recon_ld512_perceptual_2026-04-21_07-10-24/best_psnr24.12.weights.h5
+
 🔜 进行中
-9. VGG 感知损失微调（ld=512，30 epochs，进行中）
-10. 固定 CBR=0.167 的 JPEG+LDPC 对比（进行中）
+10. 固定 CBR=0.167 的 JPEG+LDPC 对比（运行中，eval_jpeg_fixed_cbr.py）
 
 ⬜ 可选（提升学术价值）
 11. ViT/Transformer encoder 对比

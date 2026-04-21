@@ -92,7 +92,37 @@ def bits_to_bytes(bits, n_bytes):
     return np.packbits(bits_int).tobytes()
 
 
+# 预创建一次，在所有 image/SNR 循环中复用
+_encoder     = None
+_decoder     = None
+_mapper      = None
+_demapper    = None
+_awgn        = None
+
+def get_ldpc_chain():
+    global _encoder, _decoder, _mapper, _demapper, _awgn
+    if _encoder is None:
+        constellation = Constellation('qam', NUM_BITS_PER_SYMBOL)
+        _encoder  = LDPC5GEncoder(k=K_BITS, n=N_BITS)
+        _decoder  = LDPC5GDecoder(_encoder, hard_out=True)
+        _mapper   = Mapper(constellation=constellation)
+        _demapper = Demapper('app', constellation=constellation)
+        _awgn     = AWGN()
+        # warm-up: trigger XLA compilation once
+        dummy_bits = tf.zeros((1, K_BITS))
+        cw = _encoder(dummy_bits)
+        sym = _mapper(cw)
+        no = ebnodb2no(10.0, num_bits_per_symbol=NUM_BITS_PER_SYMBOL, coderate=CODERATE)
+        rx = _awgn([sym, no])
+        llr = _demapper([rx, no])
+        _decoder(llr)
+        print('LDPC chain compiled (k=%d, n=%d)' % (K_BITS, N_BITS), flush=True)
+    return _encoder, _decoder, _mapper, _demapper, _awgn
+
+
 def simulate_jpeg_awgn_fixed(img_uint8, ebno_db):
+    encoder, decoder, mapper, demapper, awgn_ch = get_ldpc_chain()
+
     # 1. JPEG compress within budget
     jpeg_data = jpeg_encode_fixed(img_uint8, JPEG_BUDGET_BYTES)
 
@@ -100,30 +130,16 @@ def simulate_jpeg_awgn_fixed(img_uint8, ebno_db):
     bits = bytes_to_bits(jpeg_data, K_BITS)
     bits_tf = tf.constant(bits[np.newaxis, :], dtype=tf.float32)
 
-    # 3. LDPC encode
-    encoder = LDPC5GEncoder(k=K_BITS, n=N_BITS)
+    # 3. LDPC encode → QAM modulate → AWGN → demodulate → LDPC decode
     codeword = encoder(bits_tf)
-
-    # 4. QAM-16 modulate
-    constellation = Constellation('qam', NUM_BITS_PER_SYMBOL)
-    mapper = Mapper(constellation=constellation)
-    symbols = mapper(codeword)  # shape (1, 512)
-
-    # 5. AWGN channel
-    no = ebnodb2no(ebno_db, num_bits_per_symbol=NUM_BITS_PER_SYMBOL, coderate=CODERATE)
-    channel = AWGN()
-    rx = channel([symbols, no])
-
-    # 6. Demodulate
-    demapper = Demapper('app', constellation=constellation)
-    llrs = demapper([rx, no])
-
-    # 7. LDPC decode
-    decoder = LDPC5GDecoder(encoder, hard_out=True)
+    symbols  = mapper(codeword)
+    no       = ebnodb2no(ebno_db, num_bits_per_symbol=NUM_BITS_PER_SYMBOL, coderate=CODERATE)
+    rx       = awgn_ch([symbols, no])
+    llrs     = demapper([rx, no])
     bits_hat = decoder(llrs)  # (1, K_BITS)
 
-    # 8. Reconstruct JPEG
-    bits_np = bits_hat.numpy()[0].astype(np.uint8)
+    # 4. Reconstruct JPEG
+    bits_np  = bits_hat.numpy()[0].astype(np.uint8)
     jpeg_out = bits_to_bytes(bits_np, JPEG_BUDGET_BYTES)
     try:
         recon = np.array(Image.open(io.BytesIO(jpeg_out)).convert('RGB').resize(
@@ -157,7 +173,7 @@ def main():
         entry = {'ebno_db': snr, 'psnr': avg_psnr, 'ssim': avg_ssim,
                  'success_rate': sr, 'cbr': CBR}
         results.append(entry)
-        print(f"SNR={snr:+3d}  PSNR={avg_psnr:.2f}  SSIM={avg_ssim:.4f}  SR={sr:.2f}")
+        print(f"SNR={snr:+3d}  PSNR={avg_psnr:.2f}  SSIM={avg_ssim:.4f}  SR={sr:.2f}", flush=True)
 
     out = 'checkpoints/image-jscc/eval/jpeg_fixed_cbr.json'
     os.makedirs(os.path.dirname(out), exist_ok=True)

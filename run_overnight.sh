@@ -222,5 +222,46 @@ print("Saved: snr_recon_cdl_ld256.json")
 PYEOF
 echo "实验6完成: $(date)" | tee -a $LOG_DIR/master.log
 
+# ─────────────────────────────────────────
+# 实验7：Kodak 数据集评估（ld=128/256/512）
+# ─────────────────────────────────────────
+echo "" | tee -a $LOG_DIR/master.log
+echo ">>> [7/9] Kodak 评估: $(date)" | tee -a $LOG_DIR/master.log
+for LD in 128 256 512; do
+    python eval_kodak.py --latent-dim $LD \
+        2>&1 | tee $LOG_DIR/kodak_ld${LD}.txt
+done
+echo "实验7完成: $(date)" | tee -a $LOG_DIR/master.log
+
+# ─────────────────────────────────────────
+# 实验8：固定 CBR JPEG+LDPC 对比
+# ─────────────────────────────────────────
+echo "" | tee -a $LOG_DIR/master.log
+echo ">>> [8/9] 固定CBR JPEG评估: $(date)" | tee -a $LOG_DIR/master.log
+python eval_jpeg_fixed_cbr.py \
+    2>&1 | tee $LOG_DIR/jpeg_fixed_cbr.txt
+echo "实验8完成: $(date)" | tee -a $LOG_DIR/master.log
+
+# ─────────────────────────────────────────
+# 实验9：感知损失微调（ld=512，从 AWGN 权重）
+# ─────────────────────────────────────────
+echo "" | tee -a $LOG_DIR/master.log
+echo ">>> [9/9] 感知损失微调: $(date)" | tee -a $LOG_DIR/master.log
+LD512_AWGN_WEIGHTS=$(ls -t checkpoints/image-jscc/recon_ld512_2*/best_psnr*.weights.h5 2>/dev/null | grep -v perceptual | head -1)
+echo "基础权重: $LD512_AWGN_WEIGHTS" | tee -a $LOG_DIR/master.log
+python train_reconstruction.py \
+    --latent-dim 512 --epochs 30 --lr 5e-5 \
+    --perceptual-weight 0.1 \
+    --finetune-from "$LD512_AWGN_WEIGHTS" \
+    2>&1 | tee $LOG_DIR/perceptual_finetune.txt
+echo "实验9完成: $(date)" | tee -a $LOG_DIR/master.log
+
+# ─────────────────────────────────────────
+# 最终：重新生成对比图
+# ─────────────────────────────────────────
+echo "" | tee -a $LOG_DIR/master.log
+echo ">>> 生成最终图表: $(date)" | tee -a $LOG_DIR/master.log
+python plot_results_final.py 2>&1 | tee $LOG_DIR/plot_final.txt
+
 echo "" | tee -a $LOG_DIR/master.log
 echo "====== 所有实验完成: $(date) ======" | tee -a $LOG_DIR/master.log
