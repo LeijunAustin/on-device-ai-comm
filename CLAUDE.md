@@ -445,8 +445,12 @@ PSNR 范围：   10.49 ~ 23.83 dB（跨度 13.3 dB）
    SNR sweep 结果：snr_recon_ld512_perceptual.json
    权重：checkpoints/image-jscc/recon_ld512_perceptual_2026-04-21_07-10-24/best_psnr24.12.weights.h5
 
-🔜 进行中
-10. 固定 CBR=0.167 的 JPEG+LDPC 对比（运行中，eval_jpeg_fixed_cbr.py）
+✅ 已完成（续）
+10. 固定 CBR=0.167 的 JPEG+LDPC 对比：
+    结果：全部 SNR 点（-5 ~ 25 dB）PSNR=0，success_rate=0
+    原因：128 bytes（=CBR 0.167 对应的信息预算）不足以存储合法 JPEG 文件头（最小约 600 bytes）
+    论文论点：在相同 CBR 下，JPEG+LDPC 完全无法工作，而 DeepJSCC 可达 14.47~23.99 dB
+    结果文件：checkpoints/image-jscc/eval/jpeg_fixed_cbr.json
 
 ⬜ 可选（提升学术价值）
 11. ViT/Transformer encoder 对比
